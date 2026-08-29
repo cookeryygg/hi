@@ -141,43 +141,122 @@ h1 span { display: block; color: var(--blue); }
   position: absolute;
   z-index: 3;
   left: 50%;
-  bottom: -24px;
-  width: clamp(120px, 16vw, 210px);
-  height: clamp(130px, 17vw, 220px);
+  bottom: -48px;
+  width: clamp(210px, 29vw, 390px);
+  height: clamp(190px, 27vw, 350px);
   transform: translateX(-50%);
   pointer-events: none;
-  filter: drop-shadow(14px 14px 0 rgba(23,23,23,.32));
+  filter: drop-shadow(18px 22px 8px rgba(0,0,0,.38));
 }
-.blaster-body {
+.blaster-receiver {
   position: absolute;
-  inset: 28% 7% 0;
-  display: grid;
-  place-items: center;
-  background: var(--orange);
-  border: 5px solid var(--ink);
-  border-radius: 20% 20% 8% 8%;
-  color: var(--ink);
-  font-weight: 900;
-  font-size: clamp(1.5rem, 4vw, 3rem);
-  letter-spacing: -.08em;
+  left: 22%;
+  right: 10%;
+  top: 37%;
+  bottom: 18%;
+  overflow: hidden;
+  background: linear-gradient(145deg, #343946 0 14%, #17191f 15% 62%, #090a0d 63%);
+  border: clamp(3px, .35vw, 5px) solid #090a0d;
+  border-radius: 12% 28% 10% 18%;
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.17), inset -18px -18px 0 rgba(0,0,0,.2);
 }
 .blaster-sight {
   position: absolute;
-  z-index: 2;
-  top: 14%;
-  left: 50%;
+  z-index: 4;
+  top: 19%;
+  left: 51%;
   width: 22%;
-  height: 29%;
-  transform: translateX(-50%);
-  border: 5px solid var(--ink);
-  background: var(--blue);
+  height: 22%;
+  transform: translateX(-50%) perspective(80px) rotateX(-4deg);
+  border: clamp(3px, .3vw, 5px) solid #0b0c10;
+  border-radius: 12% 12% 4% 4%;
+  background: linear-gradient(rgba(35,76,255,.24), rgba(131,152,255,.58));
+  box-shadow: inset 0 0 14px rgba(131,152,255,.9), 0 0 0 3px #303542;
+}
+.blaster-sight span::before,
+.blaster-sight span::after {
+  content: "";
+  position: absolute;
+  background: rgba(255,255,255,.85);
+}
+.blaster-sight span::before { left: 50%; top: 18%; bottom: 18%; width: 1px; }
+.blaster-sight span::after { top: 50%; left: 22%; right: 22%; height: 1px; }
+.blaster-barrel {
+  position: absolute;
+  z-index: 3;
+  left: 43%;
+  top: 2%;
+  width: 21%;
+  height: 47%;
+  background: linear-gradient(90deg, #0a0b0e 0 18%, #414755 19% 70%, #121419 71%);
+  border: clamp(3px, .3vw, 5px) solid #090a0d;
+  clip-path: polygon(20% 0,80% 0,100% 100%,0 100%);
+}
+.blaster-barrel span {
+  position: absolute;
+  inset: 8% 32% 12%;
+  background: linear-gradient(#234cff, #8398ff 40%, #17191f 42%);
+  box-shadow: 0 0 16px rgba(35,76,255,.8);
+}
+.blaster-rail {
+  position: absolute;
+  left: 8%;
+  right: 12%;
+  top: 14%;
+  height: 10%;
+  background: repeating-linear-gradient(90deg, #596171 0 5%, #16181e 5% 9%);
+}
+.blaster-vents {
+  position: absolute;
+  left: 9%;
+  top: 45%;
+  width: 32%;
+  height: 24%;
+  transform: skewX(-12deg);
+  background: repeating-linear-gradient(90deg, var(--orange) 0 8%, #111318 8% 18%);
+  border: 2px solid #090a0d;
+}
+.blaster-display {
+  position: absolute;
+  right: 13%;
+  top: 38%;
+  padding: 3% 7%;
+  background: #101b58;
+  border: 2px solid #657dff;
+  color: #cbd3ff;
+  font: 800 clamp(.48rem, 1vw, .8rem)/1 var(--font-geist-mono), monospace;
+  box-shadow: 0 0 14px rgba(35,76,255,.7);
+}
+.blaster-grip {
+  position: absolute;
+  z-index: -1;
+  left: 49%;
+  top: 67%;
+  width: 22%;
+  height: 31%;
+  transform: skewX(-10deg);
+  background: repeating-linear-gradient(0deg, #111318 0 10%, #323744 11% 16%);
+  border: clamp(3px, .3vw, 5px) solid #090a0d;
+  border-radius: 0 0 24% 18%;
+}
+.blaster-hand {
+  position: absolute;
+  z-index: 5;
+  right: 2%;
+  bottom: -6%;
+  width: 29%;
+  height: 32%;
+  transform: rotate(-18deg);
+  background: linear-gradient(145deg, #f1b18b, #ad684b);
+  border: clamp(3px, .3vw, 5px) solid #171717;
+  border-radius: 50% 42% 15% 20%;
 }
 .muzzle-flash {
   position: absolute;
   z-index: 3;
-  top: -18%;
-  left: 50%;
-  width: 24%;
+  top: -6%;
+  left: 53.5%;
+  width: 19%;
   aspect-ratio: 1;
   opacity: 0;
   transform: translateX(-50%) rotate(45deg) scale(.2);
@@ -185,7 +264,7 @@ h1 span { display: block; color: var(--blue); }
   box-shadow: 0 0 40px 20px rgba(255,243,107,.8);
   transition: opacity 30ms ease, transform 30ms ease;
 }
-.blaster.is-firing { transform: translateX(-50%) translateY(8px); }
+.blaster.is-firing { transform: translateX(-50%) translateY(14px) scale(.985); }
 .blaster.is-firing .muzzle-flash { opacity: 1; transform: translateX(-50%) rotate(45deg) scale(1); }
 
 .game-overlay {
@@ -232,6 +311,7 @@ h1 span { display: block; color: var(--blue); }
 }
 .game-overlay button:hover, .game-overlay button:focus-visible { background: var(--paper); transform: translateY(-3px); outline: 2px solid var(--paper); outline-offset: 3px; }
 .victory-overlay { background: rgba(35,76,255,.9); }
+.defeat-overlay { background: rgba(72,8,11,.9); }
 
 .mission-rail {
   padding: 24px 20px;

@@ -7,6 +7,8 @@ type Enemy = {
   x: number;
   y: number;
   alive: boolean;
+  nextShot: number;
+  muzzleUntil: number;
 };
 
 type GameState = {
@@ -15,7 +17,9 @@ type GameState = {
   dir: number;
   started: boolean;
   victory: boolean;
+  defeated: boolean;
   kills: number;
+  health: number;
   lastFrame: number;
 };
 
@@ -36,7 +40,7 @@ const WORLD = [
 
 const TARGETS = [
   { id: 1, x: 5.5, y: 1.5 },
-  { id: 2, x: 9.5, y: 2.5 },
+  { id: 2, x: 9.5, y: 3.5 },
   { id: 3, x: 2.5, y: 5.5 },
   { id: 4, x: 8.5, y: 5.5 },
   { id: 5, x: 4.5, y: 9.5 },
@@ -48,8 +52,60 @@ const TOTAL_TARGETS = TARGETS.length;
 const START_X = 1.5;
 const START_Y = 1.5;
 
+function isOpenFloor(x: number, y: number) {
+  const mapX = Math.floor(x);
+  const mapY = Math.floor(y);
+  return (
+    mapY >= 0 &&
+    mapY < WORLD.length &&
+    mapX >= 0 &&
+    mapX < WORLD[mapY].length &&
+    WORLD[mapY][mapX] === "0"
+  );
+}
+
+function nearestOpenSpawn(x: number, y: number, occupied: Set<string>) {
+  const options: { x: number; y: number; distance: number }[] = [];
+
+  WORLD.forEach((row, mapY) => {
+    [...row].forEach((cell, mapX) => {
+      const key = `${mapX},${mapY}`;
+      if (cell === "0" && !occupied.has(key)) {
+        const spawnX = mapX + 0.5;
+        const spawnY = mapY + 0.5;
+        options.push({
+          x: spawnX,
+          y: spawnY,
+          distance: Math.hypot(spawnX - x, spawnY - y),
+        });
+      }
+    });
+  });
+
+  options.sort((a, b) => a.distance - b.distance);
+  return options[0] ?? { x: START_X, y: START_Y };
+}
+
 function freshTargets(): Enemy[] {
-  return TARGETS.map((target) => ({ ...target, alive: true }));
+  const occupied = new Set<string>([`${Math.floor(START_X)},${Math.floor(START_Y)}`]);
+
+  return TARGETS.map((target) => {
+    const targetKey = `${Math.floor(target.x)},${Math.floor(target.y)}`;
+    const spawn =
+      isOpenFloor(target.x, target.y) && !occupied.has(targetKey)
+        ? target
+        : nearestOpenSpawn(target.x, target.y, occupied);
+
+    occupied.add(`${Math.floor(spawn.x)},${Math.floor(spawn.y)}`);
+    return {
+      ...target,
+      x: spawn.x,
+      y: spawn.y,
+      alive: true,
+      nextShot: 900 + target.id * 310,
+      muzzleUntil: 0,
+    };
+  });
 }
 
 function normalizeAngle(angle: number) {
@@ -72,13 +128,17 @@ export default function Home() {
     dir: 0,
     started: false,
     victory: false,
+    defeated: false,
     kills: 0,
+    health: 100,
     lastFrame: 0,
   });
 
   const [started, setStarted] = useState(false);
   const [kills, setKills] = useState(0);
+  const [health, setHealth] = useState(100);
   const [victory, setVictory] = useState(false);
+  const [defeated, setDefeated] = useState(false);
   const [muzzle, setMuzzle] = useState(false);
   const [locked, setLocked] = useState(false);
 
@@ -114,12 +174,16 @@ export default function Home() {
       dir: 0,
       started: true,
       victory: false,
+      defeated: false,
       kills: 0,
+      health: 100,
       lastFrame: performance.now(),
     };
     enemiesRef.current = freshTargets();
     setKills(0);
+    setHealth(100);
     setVictory(false);
+    setDefeated(false);
     setStarted(true);
     canvasRef.current?.focus({ preventScroll: true });
     requestAim();
@@ -175,7 +239,7 @@ export default function Home() {
 
     const shoot = () => {
       const game = gameRef.current;
-      if (!game.started || game.victory) return;
+      if (!game.started || game.victory || game.defeated) return;
 
       setMuzzle(true);
       window.clearTimeout(muzzleTimer);
@@ -220,7 +284,7 @@ export default function Home() {
 
     const movePlayer = (delta: number) => {
       const game = gameRef.current;
-      if (!game.started || game.victory) return;
+      if (!game.started || game.victory || game.defeated) return;
 
       const moveSpeed = 2.35 * delta;
       const turnSpeed = 1.85 * delta;
@@ -263,7 +327,47 @@ export default function Home() {
       }
     };
 
-    const renderTarget = (
+    const hasLineOfSight = (enemy: Enemy) => {
+      const game = gameRef.current;
+      const dx = game.x - enemy.x;
+      const dy = game.y - enemy.y;
+      const distance = Math.hypot(dx, dy);
+      const stepX = dx / distance;
+      const stepY = dy / distance;
+
+      for (let step = 0.25; step < distance - 0.2; step += 0.08) {
+        if (isWall(enemy.x + stepX * step, enemy.y + stepY * step)) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    const updateEnemyFire = (time: number) => {
+      const game = gameRef.current;
+      if (!game.started || game.victory || game.defeated) return;
+
+      for (const enemy of enemiesRef.current) {
+        if (!enemy.alive || time < enemy.nextShot) continue;
+
+        const distance = Math.hypot(enemy.x - game.x, enemy.y - game.y);
+        enemy.nextShot = time + 1850 + ((enemy.id * 293) % 900);
+        if (distance > 7.25 || !hasLineOfSight(enemy)) continue;
+
+        enemy.muzzleUntil = time + 115;
+        game.health = Math.max(0, game.health - 7);
+        setHealth(game.health);
+
+        if (game.health === 0) {
+          game.defeated = true;
+          setDefeated(true);
+          if (document.pointerLockElement === canvas) document.exitPointerLock();
+          break;
+        }
+      }
+    };
+
+    const renderEnemy = (
       enemy: Enemy,
       width: number,
       height: number,
@@ -280,40 +384,100 @@ export default function Home() {
       const screenX =
         width / 2 +
         (Math.tan(relativeAngle) / Math.tan(FOV / 2)) * (width / 2);
-      const size = Math.min(height * 0.78, height / correctedDistance);
+      const size = Math.min(height * 0.82, (height * 0.94) / correctedDistance);
       const depthIndex = Math.max(0, Math.min(width - 1, Math.floor(screenX)));
       if (correctedDistance > depthBuffer[depthIndex] + 0.15) return;
 
-      const bob = Math.sin(performance.now() * 0.003 + enemy.id) * size * 0.04;
-      const centerY = height / 2 + bob;
+      const now = performance.now();
+      const bob = Math.sin(now * 0.003 + enemy.id) * size * 0.025;
+      const centerY = height / 2 + size * 0.08 + bob;
 
       context.save();
       context.translate(screenX, centerY);
-      context.shadowColor = "#ff5c35";
-      context.shadowBlur = size * 0.24;
-      context.fillStyle = "#ff5c35";
-      context.beginPath();
-      context.arc(0, 0, size * 0.25, 0, Math.PI * 2);
-      context.fill();
-      context.shadowBlur = 0;
+
+      // Legs and armored boots.
       context.strokeStyle = "#171717";
-      context.lineWidth = Math.max(2, size * 0.022);
+      context.lineCap = "round";
+      context.lineWidth = Math.max(3, size * 0.085);
       context.beginPath();
-      context.arc(0, 0, size * 0.36, 0, Math.PI * 2);
+      context.moveTo(-size * 0.11, size * 0.2);
+      context.lineTo(-size * 0.16, size * 0.44);
+      context.moveTo(size * 0.11, size * 0.2);
+      context.lineTo(size * 0.16, size * 0.44);
       context.stroke();
+
+      // Torso armor.
+      context.shadowColor = "rgba(255, 92, 53, .75)";
+      context.shadowBlur = size * 0.16;
+      context.fillStyle = "#ff5c35";
+      context.strokeStyle = "#171717";
+      context.lineWidth = Math.max(2, size * 0.025);
       context.beginPath();
-      context.moveTo(-size * 0.44, 0);
-      context.lineTo(size * 0.44, 0);
-      context.moveTo(0, -size * 0.44);
-      context.lineTo(0, size * 0.44);
+      context.moveTo(-size * 0.24, -size * 0.12);
+      context.lineTo(-size * 0.18, size * 0.25);
+      context.lineTo(size * 0.18, size * 0.25);
+      context.lineTo(size * 0.24, -size * 0.12);
+      context.closePath();
+      context.fill();
       context.stroke();
-      if (size > 80) {
-        context.fillStyle = "#171717";
-        context.font = `800 ${Math.max(9, size * 0.065)}px Arial`;
-        context.textAlign = "center";
-        context.textBaseline = "middle";
-        context.fillText("HI", 0, 0);
+      context.shadowBlur = 0;
+
+      // Helmet and visor.
+      context.fillStyle = "#171717";
+      context.beginPath();
+      context.arc(0, -size * 0.29, size * 0.155, Math.PI, 0);
+      context.lineTo(size * 0.135, -size * 0.2);
+      context.lineTo(-size * 0.135, -size * 0.2);
+      context.closePath();
+      context.fill();
+      context.fillStyle = "#234cff";
+      context.fillRect(-size * 0.105, -size * 0.3, size * 0.21, size * 0.055);
+
+      // Arms bracing the rifle.
+      context.strokeStyle = "#ff5c35";
+      context.lineWidth = Math.max(3, size * 0.065);
+      context.beginPath();
+      context.moveTo(-size * 0.2, -size * 0.04);
+      context.lineTo(-size * 0.05, size * 0.09);
+      context.moveTo(size * 0.2, -size * 0.04);
+      context.lineTo(size * 0.05, size * 0.09);
+      context.stroke();
+
+      // Rifle: stock, receiver, grip, sight, and barrel.
+      context.fillStyle = "#2d313b";
+      context.strokeStyle = "#090a0d";
+      context.lineWidth = Math.max(1.5, size * 0.017);
+      context.fillRect(-size * 0.29, size * 0.015, size * 0.43, size * 0.105);
+      context.strokeRect(-size * 0.29, size * 0.015, size * 0.43, size * 0.105);
+      context.fillStyle = "#111318";
+      context.fillRect(size * 0.13, size * 0.045, size * 0.27, size * 0.045);
+      context.fillRect(-size * 0.04, size * 0.11, size * 0.065, size * 0.13);
+      context.fillStyle = "#8398ff";
+      context.fillRect(-size * 0.08, -size * 0.012, size * 0.11, size * 0.03);
+
+      if (enemy.muzzleUntil > now) {
+        context.fillStyle = "#fff36b";
+        context.shadowColor = "#fff36b";
+        context.shadowBlur = size * 0.13;
+        context.beginPath();
+        context.moveTo(size * 0.4, size * 0.068);
+        context.lineTo(size * 0.55, 0);
+        context.lineTo(size * 0.49, size * 0.075);
+        context.lineTo(size * 0.55, size * 0.15);
+        context.closePath();
+        context.fill();
+        context.shadowBlur = 0;
       }
+
+      // Compact hostile marker.
+      context.strokeStyle = "rgba(255, 92, 53, .9)";
+      context.lineWidth = Math.max(1, size * 0.012);
+      context.beginPath();
+      context.moveTo(-size * 0.31, -size * 0.42);
+      context.lineTo(-size * 0.2, -size * 0.42);
+      context.moveTo(size * 0.2, -size * 0.42);
+      context.lineTo(size * 0.31, -size * 0.42);
+      context.stroke();
       context.restore();
     };
 
@@ -325,6 +489,7 @@ export default function Home() {
       const delta = Math.min(0.034, (time - (game.lastFrame || time)) / 1000);
       game.lastFrame = time;
       movePlayer(delta);
+      updateEnemyFire(time);
       canvas.dataset.playerX = game.x.toFixed(3);
       canvas.dataset.playerY = game.y.toFixed(3);
       canvas.dataset.playerDirection = game.dir.toFixed(3);
@@ -384,7 +549,7 @@ export default function Home() {
             Math.hypot(b.x - game.x, b.y - game.y) -
             Math.hypot(a.x - game.x, a.y - game.y),
         )
-        .forEach((enemy) => renderTarget(enemy, width, height, depthBuffer));
+        .forEach((enemy) => renderEnemy(enemy, width, height, depthBuffer));
 
       context.fillStyle = "rgba(243, 240, 232, 0.55)";
       context.font = `600 ${Math.max(10, width * 0.012)}px monospace`;
@@ -403,7 +568,7 @@ export default function Home() {
       }
 
       const game = gameRef.current;
-      if (game.started && !game.victory && !event.repeat) {
+      if (game.started && !game.victory && !game.defeated && !event.repeat) {
         const step = 0.12;
         let nudgeX = 0;
         let nudgeY = 0;
@@ -541,8 +706,8 @@ export default function Home() {
             </h1>
           </div>
           <p className="game-intro">
-            Enter the signal maze. Find all six broadcast nodes. Say hello with
-            your crosshair.
+            Enter the signal maze. Hunt six armed contacts before they drain
+            your system. Say hello with your crosshair.
           </p>
         </div>
 
@@ -564,7 +729,7 @@ export default function Home() {
 
             <div className="hud" aria-live="polite">
               <div className="hud-chip">
-                <span>Signals</span>
+                <span>Hostiles</span>
                 <strong>
                   {kills.toString().padStart(2, "0")} / {TOTAL_TARGETS.toString().padStart(2, "0")}
                 </strong>
@@ -575,7 +740,7 @@ export default function Home() {
               </div>
               <div className="hud-chip hud-right">
                 <span>System</span>
-                <strong>100%</strong>
+                <strong>{health}%</strong>
               </div>
             </div>
 
@@ -584,8 +749,15 @@ export default function Home() {
             </div>
             <div className={`blaster ${muzzle ? "is-firing" : ""}`} aria-hidden="true">
               <div className="muzzle-flash" />
-              <div className="blaster-sight" />
-              <div className="blaster-body">HI</div>
+              <div className="blaster-barrel"><span /></div>
+              <div className="blaster-sight"><span /></div>
+              <div className="blaster-receiver">
+                <span className="blaster-rail" />
+                <span className="blaster-vents" />
+                <span className="blaster-display">01</span>
+              </div>
+              <div className="blaster-grip" />
+              <div className="blaster-hand" />
             </div>
 
             {!started && (
@@ -606,6 +778,17 @@ export default function Home() {
                 <p>Six signals found. The world heard you.</p>
                 <button type="button" onClick={resetGame}>
                   Play again <span aria-hidden="true">↻</span>
+                </button>
+              </div>
+            )}
+
+            {defeated && (
+              <div className="game-overlay defeat-overlay">
+                <p className="overlay-index">SIGNAL LOST</p>
+                <h2>System offline.</h2>
+                <p>The contacts got you first. Reconnect and try again.</p>
+                <button type="button" onClick={resetGame}>
+                  Reboot mission <span aria-hidden="true">↻</span>
                 </button>
               </div>
             )}
@@ -664,11 +847,11 @@ export default function Home() {
           <aside className="mission-rail" aria-label="Mission briefing">
             <div>
               <p className="rail-label">Objective</p>
-              <p className="rail-copy">Find and clear every orange signal node.</p>
+              <p className="rail-copy">Find and disarm every orange trooper.</p>
             </div>
             <div className="rail-score">
               <span>{kills.toString().padStart(2, "0")}</span>
-              <p>Signals cleared</p>
+              <p>Hostiles cleared</p>
             </div>
             <div className="control-list">
               <p className="rail-label">Controls</p>
@@ -684,10 +867,10 @@ export default function Home() {
 
       <section className="ticker" aria-label="Mission transmission">
         <div>
-          <span>Find the signal</span><i>✦</i>
+          <span>Find the hostiles</span><i>✦</i>
           <span>Clear the maze</span><i>✦</i>
           <span>Say hello</span><i>✦</i>
-          <span>Find the signal</span><i>✦</i>
+          <span>Find the hostiles</span><i>✦</i>
           <span>Clear the maze</span><i>✦</i>
           <span>Say hello</span><i>✦</i>
         </div>
@@ -702,10 +885,10 @@ export default function Home() {
         <div className="intel-copy">
           <p>
             No downloads. No account. Just a tiny ray-cast world rendered live
-            in your browser and six signals waiting to be found.
+            in your browser and six armed contacts waiting in the maze.
           </p>
           <div className="mini-grid">
-            <div><strong>06</strong><span>Targets</span></div>
+            <div><strong>06</strong><span>Hostiles</span></div>
             <div><strong>01</strong><span>Maze</span></div>
             <div><strong>∞</strong><span>Retries</span></div>
           </div>
