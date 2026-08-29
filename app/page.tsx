@@ -45,6 +45,8 @@ const TARGETS = [
 
 const FOV = Math.PI / 3;
 const TOTAL_TARGETS = TARGETS.length;
+const START_X = 1.5;
+const START_Y = 1.5;
 
 function freshTargets(): Enemy[] {
   return TARGETS.map((target) => ({ ...target, alive: true }));
@@ -62,9 +64,11 @@ export default function Home() {
   const keysRef = useRef<Record<string, boolean>>({});
   const enemiesRef = useRef<Enemy[]>(freshTargets());
   const shootRef = useRef<() => void>(() => undefined);
+  const draggingAimRef = useRef(false);
+  const lastPointerXRef = useRef(0);
   const gameRef = useRef<GameState>({
-    x: 2.5,
-    y: 2.5,
+    x: START_X,
+    y: START_Y,
     dir: 0,
     started: false,
     victory: false,
@@ -85,21 +89,28 @@ export default function Home() {
   const requestAim = () => {
     const canvas = canvasRef.current;
     if (canvas && document.pointerLockElement !== canvas) {
-      canvas.requestPointerLock?.();
+      try {
+        const result = canvas.requestPointerLock?.();
+        if (result && typeof result.catch === "function") {
+          void result.catch(() => setLocked(false));
+        }
+      } catch {
+        setLocked(false);
+      }
     }
   };
 
   const startGame = () => {
     gameRef.current.started = true;
     setStarted(true);
-    canvasRef.current?.focus();
+    canvasRef.current?.focus({ preventScroll: true });
     requestAim();
   };
 
   const resetGame = () => {
     gameRef.current = {
-      x: 2.5,
-      y: 2.5,
+      x: START_X,
+      y: START_Y,
       dir: 0,
       started: true,
       victory: false,
@@ -110,7 +121,7 @@ export default function Home() {
     setKills(0);
     setVictory(false);
     setStarted(true);
-    canvasRef.current?.focus();
+    canvasRef.current?.focus({ preventScroll: true });
     requestAim();
   };
 
@@ -314,6 +325,10 @@ export default function Home() {
       const delta = Math.min(0.034, (time - (game.lastFrame || time)) / 1000);
       game.lastFrame = time;
       movePlayer(delta);
+      canvas.dataset.playerX = game.x.toFixed(3);
+      canvas.dataset.playerY = game.y.toFixed(3);
+      canvas.dataset.playerDirection = game.dir.toFixed(3);
+      canvas.dataset.gameStarted = String(game.started);
 
       const sky = context.createLinearGradient(0, 0, 0, height / 2);
       sky.addColorStop(0, "#234cff");
@@ -386,6 +401,46 @@ export default function Home() {
       ) {
         event.preventDefault();
       }
+
+      const game = gameRef.current;
+      if (game.started && !game.victory && !event.repeat) {
+        const step = 0.12;
+        let nudgeX = 0;
+        let nudgeY = 0;
+
+        if (event.code === "KeyW" || event.code === "ArrowUp") {
+          nudgeX = Math.cos(game.dir) * step;
+          nudgeY = Math.sin(game.dir) * step;
+        } else if (event.code === "KeyS" || event.code === "ArrowDown") {
+          nudgeX = -Math.cos(game.dir) * step;
+          nudgeY = -Math.sin(game.dir) * step;
+        } else if (event.code === "KeyA") {
+          nudgeX = Math.cos(game.dir - Math.PI / 2) * step;
+          nudgeY = Math.sin(game.dir - Math.PI / 2) * step;
+        } else if (event.code === "KeyD") {
+          nudgeX = Math.cos(game.dir + Math.PI / 2) * step;
+          nudgeY = Math.sin(game.dir + Math.PI / 2) * step;
+        } else if (event.code === "ArrowLeft") {
+          game.dir -= 0.08;
+        } else if (event.code === "ArrowRight") {
+          game.dir += 0.08;
+        }
+
+        const padding = 0.17;
+        if (
+          nudgeX !== 0 &&
+          !isWall(game.x + nudgeX + Math.sign(nudgeX) * padding, game.y)
+        ) {
+          game.x += nudgeX;
+        }
+        if (
+          nudgeY !== 0 &&
+          !isWall(game.x, game.y + nudgeY + Math.sign(nudgeY) * padding)
+        ) {
+          game.y += nudgeY;
+        }
+      }
+
       keysRef.current[event.code] = true;
       if (event.code === "Space" && !event.repeat) shoot();
       if (event.code === "Enter" && !gameRef.current.started) {
@@ -435,6 +490,30 @@ export default function Home() {
     }
   };
 
+  const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    event.currentTarget.focus({ preventScroll: true });
+    draggingAimRef.current = true;
+    lastPointerXRef.current = event.clientX;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (
+      started &&
+      document.pointerLockElement !== event.currentTarget &&
+      draggingAimRef.current
+    ) {
+      const movement = event.clientX - lastPointerXRef.current;
+      gameRef.current.dir += movement * 0.006;
+      lastPointerXRef.current = event.clientX;
+    }
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    draggingAimRef.current = false;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
   return (
     <main className="game-page">
       <nav className="nav" aria-label="Primary navigation">
@@ -473,8 +552,14 @@ export default function Home() {
               ref={canvasRef}
               className="game-canvas"
               onClick={handleCanvasClick}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              onKeyDown={(event) => setControl(event.code, true)}
+              onKeyUp={(event) => setControl(event.code, false)}
               tabIndex={0}
-              aria-label="First Contact first-person game. Use W A S D to move, mouse or arrow keys to aim, and click or space to fire."
+              aria-label="First Contact first-person game. Use W A S D to move, drag the mouse or use arrow keys to aim, and click or space to fire."
             />
 
             <div className="hud" aria-live="polite">
@@ -485,7 +570,7 @@ export default function Home() {
                 </strong>
               </div>
               <div className="hud-chip hud-center">
-                <span>{locked ? "Aim linked" : "Aim free"}</span>
+                <span>{locked ? "Aim linked" : "Drag to aim"}</span>
                 <strong>HI//01</strong>
               </div>
               <div className="hud-chip hud-right">
@@ -507,7 +592,7 @@ export default function Home() {
               <div className="game-overlay">
                 <p className="overlay-index">READY // PLAYER ONE</p>
                 <h2>Enter the signal.</h2>
-                <p>WASD to move · Mouse to aim · Click to fire</p>
+                <p>WASD to move · Drag or arrows to aim · Click to fire</p>
                 <button type="button" onClick={startGame}>
                   Start mission <span aria-hidden="true">→</span>
                 </button>
@@ -589,7 +674,7 @@ export default function Home() {
               <p className="rail-label">Controls</p>
               <dl>
                 <div><dt>Move</dt><dd>W A S D</dd></div>
-                <div><dt>Aim</dt><dd>Mouse / ← →</dd></div>
+                <div><dt>Aim</dt><dd>Drag / ← →</dd></div>
                 <div><dt>Fire</dt><dd>Click / Space</dd></div>
               </dl>
             </div>
