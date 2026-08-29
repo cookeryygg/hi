@@ -25,27 +25,27 @@ export async function generateMetadata(): Promise<Metadata> {
   const baseUrl = `${protocol}://${host}`;
 
   return {
-    title: "Hi — Hello, World",
-    description: "A bright little corner of the internet, saying hello.",
+    title: "Hi — First Contact",
+    description: "A playable first-person hello from the edge of the web.",
     metadataBase: new URL(baseUrl),
     openGraph: {
-      title: "Hi — Hello, World",
-      description: "A bright little corner of the internet, saying hello.",
+      title: "Hi — First Contact",
+      description: "A playable first-person hello from the edge of the web.",
       type: "website",
       images: [
         {
-          url: `${baseUrl}/og.png`,
+          url: `${baseUrl}/og-game.png`,
           width: 1731,
           height: 909,
-          alt: "Hello, world.",
+          alt: "First Contact browser FPS.",
         },
       ],
     },
     twitter: {
       card: "summary_large_image",
-      title: "Hi — Hello, World",
-      description: "A bright little corner of the internet, saying hello.",
-      images: [`${baseUrl}/og.png`],
+      title: "Hi — First Contact",
+      description: "A playable first-person hello from the edge of the web.",
+      images: [`${baseUrl}/og-game.png`],
     },
   };
 }

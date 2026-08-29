@@ -1,6 +1,6 @@
-# hi
+# hi // first contact
 
-A bright, responsive Hello World landing page built with Next.js, React, and vinext.
+A playable, responsive browser FPS built directly into a bold Hello World landing page. The game uses a custom canvas ray caster with keyboard, mouse, and touch controls.
 
 ## Run locally
 
